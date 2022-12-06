@@ -30,6 +30,6 @@ jobs:
       - uses: actions/checkout@v3
       - name: Load configuration for this firmware
         id: firmware-config
-        run: echo CONFIG=$(jq -c .firmware/${{ matrix.firmware }}/config.json) >> $GITHUB_OUTPUT
+        run: echo CONFIG=$(jq -c . firmware/${{ matrix.firmware }}/config.json) >> $GITHUB_OUTPUT
       - name: echo something to test
         run: echo ${{ fromJson(env.CONFIG).kernel_tar_uri }}
