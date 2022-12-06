@@ -53,3 +53,18 @@ jobs:
         with:
           name: ${{ matrix.firmware }}-macvlan.ko
           path: linux-source/drivers/net/macvlan.ko
+
+  release:
+    runs-on: ubuntu-22.04
+    needs:
+      - build-module
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Create Release
+        id: create_release
+        uses: fossoreslp/release-artifacts@v1
+        with:
+          title: Release
+          template: ci/release_body.md
+          token: ${{ secrets.GITHUB_TOKEN }}
