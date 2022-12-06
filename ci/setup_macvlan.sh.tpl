@@ -13,7 +13,7 @@ MODULE_DIR="/data/macvlan-module"
 
 mkdir -p "${MODULE_DIR}"
 
-curl -o "${MODULE_DIR}/${MODULE_FILE_NAME}" "${RELEASE_DOWNLOAD_URL}"
+curl -Lo "${MODULE_DIR}/${MODULE_FILE_NAME}" "${RELEASE_DOWNLOAD_URL}"
 
 cat <<'EOF'> /data/on_boot.d/01-load-macvlan-module.sh
 #!/usr/bin/env bash
