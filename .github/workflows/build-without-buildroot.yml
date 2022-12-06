@@ -40,4 +40,4 @@ jobs:
       - name: Prepare for building
         run: |
           cd linux-source
-          make prepare modules_prepare
+          make olddefconfig prepare modules_prepare
