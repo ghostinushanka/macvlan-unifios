@@ -37,6 +37,8 @@ jobs:
           tar -xf kernel.tar.gz --strip-components=1 -C linux-source
       - name: Copy kernel config file into kernel directory
         run: cp firmware/${{ matrix.firmware }}/kernel-config linux-source/.config
+      - name: Apply firmware-specific patches
+        run: find firmware/${{ matrix.firmware }}/patches -type f -name '*.patch' -print0 | sort -z | xargs -t -0 -n 1 patch -p0 -i
       - name: Prepare for building
         run: |
           sudo apt install gcc-aarch64-linux-gnu
