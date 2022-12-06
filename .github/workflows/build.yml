@@ -1,133 +1,78 @@
-name: Build kernel module (buildroot)
+name: Build Kernel Module
 
 on:
   push:
     branches:
       - "master"
+    tags:
+      - "*"
   pull_request:
   workflow_dispatch:
 
-env:
-  MODULE_VERSION: "1.0.0"
-  PACKAGE_RELEASE: "1"
-  BUILDROOT_VERSION: "2017.11.1"
 
 jobs:
-  prepare-buildroot:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v3
-      - name: Download buildroot-${{ env.BUILDROOT_VERSION }}
-        run: |
-          curl -o buildroot.tar.bz2 https://buildroot.org/downloads/buildroot-${BUILDROOT_VERSION}.tar.bz2
-          tar -xf buildroot.tar.bz2
-      - name: Patches
-        run: |
-          patch -d ./buildroot-${BUILDROOT_VERSION} -p1 <unifios/patches/add-kernel-4-19.patch
-          cp unifios/patches/0001-m4-glibc-change-work-around.patch ./buildroot-${BUILDROOT_VERSION}/package/m4
-          cp unifios/patches/0001-bison-glibc-change-work-around.patch ./buildroot-${BUILDROOT_VERSION}/package/bison
-          cp unifios/patches/944-mpc-relative-literal-loads-logic-in-aarch64_classify_symbol.patch ./buildroot-${BUILDROOT_VERSION}/package/gcc/6.4.0
-          cp unifios/patches/0001-dtc-fix-yylloc-duplication.patch ./buildroot-${BUILDROOT_VERSION}/package/dtc
-
-          rm -rf ./buildroot-${BUILDROOT_VERSION}/linux-patches ./buildroot-${BUILDROOT_VERSION}/patches
-      - name: Generate artifacts
-        run: tar -cf buildroot.tar buildroot-${BUILDROOT_VERSION}
-      - name: Store headers
-        uses: actions/upload-artifact@v3
-        with:
-          name: buildroot.tar
-          path: buildroot.tar
-
-  get-bases:
-    runs-on: ubuntu-20.04
+  get-firmware-list:
+    runs-on: ubuntu-22.04
     outputs:
-      bases: ${{ steps.get-bases.outputs.directories }}
+      firmwares: ${{ steps.get-firmwares.outputs.directories }}
     steps:
       - uses: actions/checkout@v3
-      - name: Build bases list from directories in unifios/bases
-        id: get-bases
+      - name: Build firmware list from directories in ./firmware
+        id: get-firmwares
         run:
-          python3 ci/dir_to_json.py unifios/bases >> $GITHUB_OUTPUT
-
+          python3 ci/dir_to_json.py ./firmware >> $GITHUB_OUTPUT
 
   build-module:
-    needs: [prepare-buildroot, get-bases]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
+    needs: get-firmware-list
     strategy:
       matrix:
-        base: ${{ fromJSON(needs.get-bases.outputs.bases) }}
+        firmware: ${{ fromJSON(needs.get-firmware-list.outputs.firmwares) }}
     steps:
       - uses: actions/checkout@v3
-      - name: Restore buildroot
-        uses: actions/download-artifact@v3
-        with:
-          name: buildroot.tar
-      - name: Extract buildroot
-        run: tar -xf buildroot.tar
-      - name: Restore buildroot ccache
-        uses: actions/cache@v3
-        with:
-          path: ~/.buildroot-ccache
-          key: ${{ env.BUILDROOT_VERSION }}-buildroot_ccache-${{ matrix.base }}
-          restore-keys: |
-            ${{ env.BUILDROOT_VERSION }}-buildroot_ccache-
-      - name: Build macvlan module
+      - name: Load configuration for this firmware
+        run: echo CONFIG=$(jq -c . firmware/${{ matrix.firmware }}/config.json) >> $GITHUB_ENV
+      - name: Download kernel
         run: |
-          mkdir -p modules
-          cp unifios/bases/${{ matrix.base }}/buildroot-config.txt buildroot-${BUILDROOT_VERSION}/.config
-          cp unifios/bases/${{ matrix.base }}/kernel-config buildroot-${BUILDROOT_VERSION}/kernel-config
-          if [ -d "unifios/bases/${{ matrix.base }}/linux-patches" ]; then
-            cp -rf "unifios/bases/${{ matrix.base }}/linux-patches" ./buildroot-${BUILDROOT_VERSION}/
-          fi
-          if [ -f "unifios/bases/${{ matrix.base }}/linux-patches.tar.gz" ]; then
-            tar -C ./buildroot-${BUILDROOT_VERSION} -xf "unifios/bases/${{ matrix.base }}/linux-patches.tar.gz"
-          fi
-          if [ -d "unifios/bases/${{ matrix.base }}/patches" ]; then
-            cp -rf "unifios/bases/${{ matrix.base }}/patches" ./buildroot-${BUILDROOT_VERSION}/
-          fi
-          cd buildroot-${BUILDROOT_VERSION}
-          make linux-build
-      - name: Store kernel module
+          curl -o kernel.tar.gz "${{ fromJson(env.CONFIG).kernel_tar_uri }}"
+          mkdir linux-source
+          tar -xf kernel.tar.gz --strip-components=1 -C linux-source
+      - name: Copy kernel config file into kernel directory
+        run: cp firmware/${{ matrix.firmware }}/kernel-config linux-source/.config
+      - name: Apply firmware-specific patches
+        run: find firmware/${{ matrix.firmware }}/patches -type f -name '*.patch' -print0 | sort -z | xargs -t -0 -n 1 patch -p0 -i
+      - name: Prepare for building
+        run: |
+          sudo apt install gcc-aarch64-linux-gnu
+          cd linux-source
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig prepare modules_prepare
+      - name: Build the module
+        run: |
+          cd linux-source
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- drivers/net/macvlan.ko
+      - name: Add the module to the artifact directory
+        run: |
+          mkdir modules
+          cp linux-source/drivers/net/macvlan.ko modules/${{matrix.firmware}}-macvlan.ko
+      - name: Store the artifact
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.base }}-macvlan.ko
-          path: output/build/linux-custom/drivers/net/macvlan.ko
+          name: modules
+          path: modules
 
-  # udm-package:
-  #   needs: [build-module]
-  #   runs-on: ubuntu-20.04
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - name: Prepare
-  #       run: mkdir -p package package/wireguard package/wireguard/modules
-  #     - name: Restore modules
-  #       uses: actions/download-artifact@v2
-  #       with:
-  #         name: modules
-  #         path: package/wireguard/modules
-  #     - name: Add setup
-  #       run: cp unifios/setup_wireguard.sh package/wireguard/
-  #     - name: Package
-  #       run: tar -C package -czf UnifiOS-$MODULE_VERSION.tar.gz ./
-  #     - name: Store package
-  #       uses: actions/upload-artifact@v2
-  #       with:
-  #         name: release_unifios
-  #         path: UnifiOS-${{ env.MODULE_VERSION }}-${{ env.TOOLS_VERSION }}.tar.gz
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    needs:
+      - build-module
 
-  # release:
-  #   runs-on: ubuntu-20.04
-  #   needs:
-  #     - package
-  #     - udm-package
-
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - name: Create Release
-  #       id: create_release
-  #       uses: fossoreslp/release-artifacts@v1
-  #       with:
-  #         title: WireGuard ${{ env.MODULE_VERSION }}
-  #         template: ci/release_body.md
-  #         token: ${{ secrets.GITHUB_TOKEN }}
-  #         variables: ${{ toJSON(env) }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: modules
+          path: modules
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: modules/*
