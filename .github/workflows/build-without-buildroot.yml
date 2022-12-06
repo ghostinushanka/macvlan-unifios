@@ -48,11 +48,15 @@ jobs:
         run: |
           cd linux-source
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- drivers/net/macvlan.ko
-      - name: Store the module
+      - name: Add the module to the artifact directory
+        run: |
+          mkdir modules
+          cp linux-source/drivers/net/macvlan.ko modules/${{matrix.firmware}}-macvlan.ko
+      - name: Store the artifact
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.firmware }}-macvlan.ko
-          path: linux-source/drivers/net/macvlan.ko
+          name: modules
+          path: modules
 
   release:
     runs-on: ubuntu-22.04
@@ -61,10 +65,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      - name: Create Release
-        id: create_release
-        uses: fossoreslp/release-artifacts@v1
+      - uses: actions/download-artifact@v3
         with:
-          title: Release
-          template: ci/release_body.md
-          token: ${{ secrets.GITHUB_TOKEN }}
+          name: modules
+          path: modules
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: modules/*
