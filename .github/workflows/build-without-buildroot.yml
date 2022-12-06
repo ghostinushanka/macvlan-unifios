@@ -32,7 +32,7 @@ jobs:
         run: echo CONFIG=$(jq -c . firmware/${{ matrix.firmware }}/config.json) >> $GITHUB_ENV
       - name: Download kernel
         run: |
-          wget -o kernel.tar.gz "${{ fromJson(env.CONFIG).kernel_tar_uri }}"
+          curl -o kernel.tar.gz "${{ fromJson(env.CONFIG).kernel_tar_uri }}"
           tar -xvf kernel.tar.gz
       - name: Copy kernel config file into kernel directory
         run: cp firmware/${{ matrix.firmware }}/kernel-config linux*/.config
