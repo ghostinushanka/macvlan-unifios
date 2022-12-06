@@ -72,7 +72,12 @@ jobs:
         with:
           name: modules
           path: modules
+      - name: Create setup_macvlan.sh
+        run: |
+          sed 's/%%GITHUB_TAG%%/${{  github.ref_name }}/' ci/setup_macvlan.sh.tpl > setup_macvlan.sh
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
-          files: modules/*
+          files: |
+            modules/*
+            setup_macvlan.sh
