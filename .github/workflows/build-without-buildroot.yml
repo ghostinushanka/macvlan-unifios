@@ -29,7 +29,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Load configuration for this firmware
-        id: firmware-config
         run: echo CONFIG=$(jq -c . firmware/${{ matrix.firmware }}/config.json) >> $GITHUB_ENV
-      - name: echo something to test
-        run: echo ${{ fromJson(env.CONFIG).kernel_tar_uri }}
+      - name: Download kernel
+        run: |
+          wget -o kernel.tar.gz "${{ fromJson(env.CONFIG).kernel_tar_uri }}"
+          tar -xvf kernel.tar.gz
+      - name: Copy kernel config file into kernel directory
+        run: cp firmware/${{ matrix.firmware }}/kernel-config linux*/.config
