@@ -39,5 +39,6 @@ jobs:
         run: cp firmware/${{ matrix.firmware }}/kernel-config linux-source/.config
       - name: Prepare for building
         run: |
+          sudo apt install gcc-aarch64-linux-gnu
           cd linux-source
-          make olddefconfig prepare modules_prepare
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig prepare modules_prepare
