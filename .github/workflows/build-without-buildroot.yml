@@ -44,3 +44,12 @@ jobs:
           sudo apt install gcc-aarch64-linux-gnu
           cd linux-source
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig prepare modules_prepare
+      - name: Build the module
+        run: |
+          cd linux-source
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- drivers/net/macvlan.ko
+      - name: Store the module
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.firmware }}-macvlan.ko
+          path: linux-source/drivers/net/macvlan.ko
